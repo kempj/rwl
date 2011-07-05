@@ -40,6 +40,9 @@
 #include <sys/stat.h>
 #include <ffi.h>
 
+//JK
+#include <netdb.h>
+
 #include "wayland-server.h"
 #include "wayland-server-protocol.h"
 #include "connection.h"
@@ -136,24 +139,30 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 {
 	struct wl_client *client = data;
 	struct wl_connection *connection = client->connection;
-	struct wl_object *object;
-	struct wl_closure *closure;
-	const struct wl_message *message;
-	uint32_t p[2], opcode, size;
+	//struct wl_object *object;
+	//struct wl_closure *closure;
+	//const struct wl_message *message;
+	//uint32_t p[2], opcode, size;
 	uint32_t cmask = 0;
 	int len;
-
+/*
 	if (mask & WL_EVENT_READABLE)
 		cmask |= WL_CONNECTION_READABLE;
 	if (mask & WL_EVENT_WRITEABLE)
-		cmask |= WL_CONNECTION_WRITABLE;
-
-	len = wl_connection_data(connection, cmask);
+		cmask |= WL_CONNECTION_WRITABLE;*/
+	// read in
+	len = wl_connection_data(connection, WL_CONNECTION_READABLE);
+	
+	//switch
+	rwl_fd_switch(connection, fd);
+	//write out
+	len = wl_connection_data(connection, WL_CONNECTION_WRITABLE);
 	if (len < 0) {
 		wl_client_destroy(client);
 		return 1;
 	}
 
+/*
 	while (len >= sizeof p) {
 		wl_connection_copy(connection, p, sizeof p);
 		opcode = p[1] & 0xffff;
@@ -208,7 +217,7 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 				  object->implementation[opcode], client);
 
 		wl_closure_destroy(closure);
-	}
+	}*/
 
 	return 1;
 }
@@ -250,6 +259,54 @@ wl_display_post_range(struct wl_display *display, struct wl_client *client)
 	display->client_id_range += 256;
 	client->id_count += 256;
 }
+
+WL_EXPORT int
+rwl_forward_create(struct wl_display *display, int client_fd)
+	//how am I going to get the remote address in here?
+{
+	struct wl_client *client;
+	struct addrinfo *remote, *result;
+	int err, remote_fd;
+
+	//open connection with remote host
+	
+	if((err = getaddrinfo("127.0.0.1", "35000", NULL, &remote)) != 0) {
+		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(err));
+		return EXIT_FAILURE;
+	}
+
+	for(result = remote;result != NULL;result = result->ai_next){
+		if((remote_fd = socket(result->ai_family, result->ai_socktype,
+				result->ai_protocol)) == -1){
+			perror("client: socket");
+			continue;
+		}
+
+		if (connect(remote_fd, result->ai_addr, result->ai_addrlen) == -1) {
+		close(remote_fd);
+		perror("client: connect");
+		continue;
+        	}
+
+		break;
+	}
+	printf("1\n");
+	
+	//pack the client_fd into the source
+	client = malloc(sizeof *client);
+	memset(client, 0, sizeof *client);	
+	client->display = display;
+	client-> source = rwl_event_loop_add_fd(display->loop, remote_fd, client_fd,
+					      WL_EVENT_READABLE,
+					      wl_client_connection_data, client);
+					      //rwl_forward_to_remote, client);
+	client->connection = 
+		wl_connection_create(remote_fd, wl_client_connection_update, client);//not sure
+	printf("2\n");
+
+	return remote_fd;
+}
+
 
 WL_EXPORT struct wl_client *
 wl_client_create(struct wl_display *display, int fd)

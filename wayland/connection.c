@@ -248,6 +248,16 @@ decode_cmsg(struct wl_buffer *buffer, struct msghdr *msg)
 }
 
 int
+rwl_fd_switch(struct wl_connection *connection, int fd){
+	struct iovec iov[2];
+	int count;
+
+	wl_buffer_get_iov(&connection->in, iov, &count);
+	wl_buffer_put_iov(&connection->out, iov,&count);
+	connection->fd = fd;
+}
+
+int
 wl_connection_data(struct wl_connection *connection, uint32_t mask)
 {
 	struct iovec iov[2];
