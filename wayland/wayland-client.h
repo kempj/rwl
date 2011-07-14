@@ -83,6 +83,10 @@ WL_EXPORT uint32_t
 wl_display_get_global(struct wl_display *display,
 		      const char *interface, uint32_t version);
 
+struct rwl_connection;
+int rwl_get_display_fd(struct wl_display *display);
+WL_EXPORT int rwl_client_forward(struct rwl_connection *rc);
+
 #ifdef  __cplusplus
 }
 #endif

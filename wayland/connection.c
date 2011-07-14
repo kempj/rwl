@@ -248,13 +248,41 @@ decode_cmsg(struct wl_buffer *buffer, struct msghdr *msg)
 }
 
 int
-rwl_fd_switch(struct wl_connection *connection, int fd){
+rwl_fd_switch(struct wl_connection *connection, int fd)
+{
 	struct iovec iov[2];
 	int count;
 
 	wl_buffer_get_iov(&connection->in, iov, &count);
 	wl_buffer_put_iov(&connection->out, iov,&count);
 	connection->fd = fd;
+}
+
+typedef int (*dispatch_func_ptr)(struct rwl_connection *rc, int epoll_fd);
+
+struct rwl_connection{
+	struct wl_buffer in, out;
+	struct wl_buffer fds_in, fds_out;
+	int fd_to;
+	int fd_from;
+	dispatch_func_ptr dispatch;
+	struct display *display;
+};
+
+struct wl_connection*
+rwl_remote_to_connection(struct rwl_connection *rc)
+{
+	struct wl_connection *connection;
+	connection = malloc(sizeof *connection);
+	//if (connection == NULL)
+		//return NULL;
+	connection->in = rc->in;
+	connection->out = rc->out;
+	connection->fds_in = rc->fds_in;
+	connection->fds_out = rc->fds_out;
+	connection->fd = rc->fd_from;
+
+	return connection;
 }
 
 int
@@ -311,9 +339,12 @@ wl_connection_data(struct wl_connection *connection, uint32_t mask)
 		msg.msg_controllen = sizeof cmsg;
 		msg.msg_flags = 0;
 
+		printf("before the recvmsg\n");
 		do {
 			len = recvmsg(connection->fd, &msg, MSG_CMSG_CLOEXEC);
 		} while (len < 0 && errno == EINTR);
+
+		printf("after the recvmsg\n");
 
 		if (len < 0) {
 			fprintf(stderr,

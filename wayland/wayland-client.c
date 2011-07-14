@@ -358,6 +358,11 @@ connect_to_socket(struct wl_display *display, const char *name)
 	return 0;
 }
 
+WL_EXPORT  int
+rwl_get_display_fd(struct wl_display *display){
+	return display->fd;
+}
+
 WL_EXPORT struct wl_display *
 wl_display_connect(const char *name)
 {
@@ -597,4 +602,35 @@ WL_EXPORT void *
 wl_proxy_get_user_data(struct wl_proxy *proxy)
 {
 	return proxy->user_data;
+}
+
+typedef int (*dispatch_func_ptr)(struct rwl_connection *rc, int epoll_fd);
+
+struct wl_buffer {
+	char data[4096];
+	int head, tail;
+};
+
+struct rwl_connection{
+	struct wl_buffer in, out;
+	struct wl_buffer fds_in, fds_out;
+	int fd_to;
+	int fd_from;
+	dispatch_func_ptr dispatch;
+	struct display *display;
+};
+
+WL_EXPORT int
+rwl_client_forward(struct rwl_connection *rc)
+{
+	struct wl_connection *connection = rwl_remote_to_connection(rc);
+	
+	wl_connection_data(connection, WL_CONNECTION_READABLE);
+
+	rwl_fd_switch(connection, rc->fd_to);
+
+	wl_connection_data(connection, WL_CONNECTION_WRITABLE);
+	
+
+	return 0;
 }

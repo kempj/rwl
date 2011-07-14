@@ -144,23 +144,36 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 	//const struct wl_message *message;
 	//uint32_t p[2], opcode, size;
 	uint32_t cmask = 0;
-	int len;
-/*
+	int len, temp_fd = fd;
+
 	if (mask & WL_EVENT_READABLE)
+	{
+		printf("readable");
 		cmask |= WL_CONNECTION_READABLE;
+	}
 	if (mask & WL_EVENT_WRITEABLE)
-		cmask |= WL_CONNECTION_WRITABLE;*/
+	{
+		printf("writable");//cmask |= WL_CONNECTION_WRITABLE;
+		//return 0;
+	}
+	printf("wccd\n");
 	// read in
+	printf("wccd 1\n");
+	//TODO:do I need to use this len for error checking?
 	len = wl_connection_data(connection, WL_CONNECTION_READABLE);
 	
 	//switch
 	rwl_fd_switch(connection, fd);
+	printf("wccd 2\n");
 	//write out
 	len = wl_connection_data(connection, WL_CONNECTION_WRITABLE);
 	if (len < 0) {
 		wl_client_destroy(client);
 		return 1;
 	}
+	
+	rwl_fd_switch(connection, temp_fd);
+	printf("wccd 3\n");
 
 /*
 	while (len >= sizeof p) {
@@ -264,6 +277,7 @@ WL_EXPORT int
 rwl_forward_create(struct wl_display *display, int client_fd)
 	//how am I going to get the remote address in here?
 {
+	printf("entering rwl_forward_create\n");
 	struct wl_client *client;
 	struct addrinfo *remote, *result;
 	int err, remote_fd;
@@ -289,9 +303,7 @@ rwl_forward_create(struct wl_display *display, int client_fd)
         	}
 
 		break;
-	}
-	printf("1\n");
-	
+	}	
 	//pack the client_fd into the source
 	client = malloc(sizeof *client);
 	memset(client, 0, sizeof *client);	
@@ -302,44 +314,57 @@ rwl_forward_create(struct wl_display *display, int client_fd)
 					      //rwl_forward_to_remote, client);
 	client->connection = 
 		wl_connection_create(remote_fd, wl_client_connection_update, client);//not sure
-	printf("2\n");
 
 	return remote_fd;
 }
 
 
 WL_EXPORT struct wl_client *
-wl_client_create(struct wl_display *display, int fd)
+wl_client_create(struct wl_display *display, int local_fd)
 {
-	struct wl_client *client;
-	struct wl_global *global;
 
-	client = malloc(sizeof *client);
-	if (client == NULL)
-		return NULL;
+	printf("entering wl_cleint_create\n");
+        struct wl_client *client;
+        struct wl_global *global;
+        int remote_fd;
 
-	memset(client, 0, sizeof *client);
-	client->display = display;
-	client->source = wl_event_loop_add_fd(display->loop, fd,
-					      WL_EVENT_READABLE,
-					      wl_client_connection_data, client);
-	client->connection =
-		wl_connection_create(fd, wl_client_connection_update, client);
-	if (client->connection == NULL) {
-		free(client);
-		return NULL;
-	}
+        client = malloc(sizeof *client);
+        if (client == NULL)
+                return NULL;
 
-	wl_list_insert(display->client_list.prev, &client->link);
+        //I need the remote_fd because the fds for the remote and client are 
+        //being swapped. Anything that comes in on the local fd, reads from the
+        //local fd, then writes to the remote fd. And the inverse for writes 
+        //to the remote fd.
+        remote_fd = rwl_forward_create(display, local_fd);
 
-	wl_list_init(&client->resource_list);
+        memset(client, 0, sizeof *client);
+        client->display = display;
+        client->source = rwl_event_loop_add_fd(display->loop, local_fd, remote_fd,
+                                              WL_EVENT_READABLE,
+                                              wl_client_connection_data, client);
+        client->connection =
+                wl_connection_create(local_fd, wl_client_connection_update, client);
+        if (client->connection == NULL) {
+                free(client);
+                return NULL;
+        }
 
-	wl_display_post_range(display, client);
+        wl_list_insert(display->client_list.prev, &client->link);
 
-	wl_list_for_each(global, &display->global_list, link)
-		wl_client_post_global(client, global->object);
+        wl_list_init(&client->resource_list);
 
-	return client;
+        wl_display_post_range(display, client);
+
+        wl_list_for_each(global, &display->global_list, link)
+                wl_client_post_global(client, global->object);
+
+	wl_client_connection_data(local_fd, WL_EVENT_READABLE, client);
+
+	printf("leaving wl_cleint_create\n");
+
+        return client;
+
 }
 
 WL_EXPORT void

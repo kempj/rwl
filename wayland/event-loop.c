@@ -71,7 +71,7 @@ wl_event_source_fd_dispatch(struct wl_event_source *source,
 	if (ep->events & EPOLLIN)
 		mask |= WL_EVENT_READABLE;
 	if (ep->events & EPOLLOUT)
-		mask |= WL_EVENT_WRITEABLE;
+		printf("You shouldn't see me4\n");//mask |= WL_EVENT_WRITEABLE;
 
 	return fd_source->func(fd_source->fd, mask, fd_source->base.data);
 }
@@ -94,6 +94,41 @@ struct wl_event_source_interface fd_source_interface = {
 	wl_event_source_fd_dispatch,
 	wl_event_source_fd_remove
 };
+
+WL_EXPORT struct wl_event_source *
+rwl_event_loop_add_fd(struct wl_event_loop *loop,
+		     int read_fd, int write_fd, uint32_t mask,
+		     wl_event_loop_fd_func_t func,
+		     void *data)
+{
+	struct wl_event_source_fd *source;
+	struct epoll_event ep;
+
+	source = malloc(sizeof *source);
+	if (source == NULL)
+		return NULL;
+
+	source->base.interface = &fd_source_interface;
+	source->base.loop = loop;
+	wl_list_init(&source->base.link);
+	source->fd = write_fd;
+	source->func = func;
+	source->base.data = data;
+
+	memset(&ep, 0, sizeof ep);
+	if (mask & WL_EVENT_READABLE)
+		ep.events |= EPOLLIN;
+	if (mask & WL_EVENT_WRITEABLE)
+		printf("You shouldn't see me1\n");//ep.events |= EPOLLOUT;
+	ep.data.ptr = source;
+
+	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_ADD, read_fd, &ep) < 0) {
+		free(source);
+		return NULL;
+	}
+
+	return &source->base;
+}
 
 WL_EXPORT struct wl_event_source *
 wl_event_loop_add_fd(struct wl_event_loop *loop,
@@ -119,7 +154,7 @@ wl_event_loop_add_fd(struct wl_event_loop *loop,
 	if (mask & WL_EVENT_READABLE)
 		ep.events |= EPOLLIN;
 	if (mask & WL_EVENT_WRITEABLE)
-		ep.events |= EPOLLOUT;
+		printf("You shouldn't see me2\n");//ep.events |= EPOLLOUT;
 	ep.data.ptr = source;
 
 	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_ADD, fd, &ep) < 0) {
@@ -142,7 +177,7 @@ wl_event_source_fd_update(struct wl_event_source *source, uint32_t mask)
 	if (mask & WL_EVENT_READABLE)
 		ep.events |= EPOLLIN;
 	if (mask & WL_EVENT_WRITEABLE)
-		ep.events |= EPOLLOUT;
+		printf("You shouldn't see me3\n");//ep.events |= EPOLLOUT;
 	ep.data.ptr = source;
 
 	return epoll_ctl(loop->epoll_fd,
@@ -442,7 +477,7 @@ wl_event_loop_dispatch(struct wl_event_loop *loop, int timeout)
 	int i, count, n;
 
 	dispatch_idle_sources(loop);
-
+	printf("event-loop dispatched ");//jkdebug
 	count = epoll_wait(loop->epoll_fd, ep, ARRAY_LENGTH(ep), timeout);
 	if (count < 0)
 		return -1;
